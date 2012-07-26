@@ -13822,7 +13822,7 @@ else
 
 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking trying to find the freetype source directory -- be patient" >&5
 $as_echo_n "checking trying to find the freetype source directory -- be patient... " >&6; }
-	  FreeType2_TT_SRC_DIRs=`find / -name ttobjs.h -print 2>/dev/null |grep 'freetype[^/\]*2[^/\]*/src/truetype/ttobjs.h' | sort -r | sed -e 's/ttobjs.h//'`
+	  FreeType2_TT_SRC_DIRs=`find /usr -name ttobjs.h -print 2>/dev/null |grep 'freetype[^/\]*2[^/\]*/src/truetype/ttobjs.h' | sort -r | sed -e 's/ttobjs.h//'`
 	  for dir in $FreeType2_TT_SRC_DIRs; do
 	   if cmp -s ${dir}../../include/freetype/freetype.h ${FreeType2_IncRoot}/freetype/freetype.h >/dev/null 2>&1 ; then
 	    FreeType2_TT_BUILD_INC=$dir

@@ -5243,6 +5243,9 @@ return( true );
 
 #define MID_Warnings	3000
 
+#define MID_Preview     4000
+
+
 static void CVMenuClose(GWindow gw,struct gmenuitem *mi,GEvent *e) {
     CharView *cv = (CharView *) GDrawGetUserData(gw);
     if ( cv->b.container )
@@ -5273,9 +5276,11 @@ return;
     BitmapViewCreatePick(CVCurEnc(cv),(FontView *) (cv->b.fv));
 }
 
+void MVSetPointSize( GWindow mgw, int ptsize, int dpi );
 static void CVMenuOpenMetrics(GWindow gw,struct gmenuitem *mi,GEvent *e) {
     CharView *cv = (CharView *) GDrawGetUserData(gw);
-    MetricsViewCreate((FontView *) (cv->b.fv),cv->b.sc,NULL);
+    MetricsView *mv = MetricsViewCreate((FontView *) (cv->b.fv),cv->b.sc,NULL);
+    MVSetPointSize( mv->gw, cv->scale * 1022, 0 );
 }
 
 static void CVMenuSave(GWindow gw,struct gmenuitem *mi,GEvent *e) {
@@ -5846,8 +5851,6 @@ void CVPreviewModeSet(GWindow gw, int checked ) {
     GDrawRequestExpose(cv->v,NULL,false);
 }
 
-
-                                    
 static void CVMenuPreview(GWindow gw,struct gmenuitem *mi,GEvent *e) {
     CharView *cv = (CharView *) GDrawGetUserData(gw);
     int checked = mi->ti.checked;
