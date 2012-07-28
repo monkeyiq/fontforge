@@ -3072,8 +3072,6 @@ static void CVCharUp(CharView *cv, GEvent *event ) {
 	}
     }
     
-    
-    
 #if _ModKeysAutoRepeat
     /* Under cygwin these keys auto repeat, they don't under normal X */
     if ( event->u.chr.keysym == GK_Shift_L || event->u.chr.keysym == GK_Shift_R ||
@@ -3100,6 +3098,8 @@ static void CVCharUp(CharView *cv, GEvent *event ) {
 	CVToolsSetCursor(cv,TrueCharState(event),NULL);
     }
 #else
+
+   
     CVToolsSetCursor(cv,TrueCharState(event),NULL);
     if ( event->u.chr.keysym == GK_Shift_L || event->u.chr.keysym == GK_Shift_R ||
 	     event->u.chr.keysym == GK_Alt_L || event->u.chr.keysym == GK_Alt_R ||
@@ -4407,6 +4407,7 @@ return;
 
 static int v_e_h(GWindow gw, GEvent *event) {
     CharView *cv = (CharView *) GDrawGetUserData(gw);
+    printf("v_e_h 1...\n");
 
     GGadgetPopupExternalEvent(event);
     if (( event->type==et_mouseup || event->type==et_mousedown ) &&
@@ -4421,7 +4422,7 @@ return( GGadgetDispatchEvent(cv->hsb,event));
 return( GGadgetDispatchEvent(cv->vsb,event));
 	}
     }
-
+    printf("v_e_h 2...\n");
     switch ( event->type ) {
       case et_expose:
 	GDrawSetLineWidth(gw,0);
@@ -4447,6 +4448,7 @@ return( GGadgetDispatchEvent(cv->vsb,event));
 	CVMouseUp(cv,event);
       break;
       case et_char:
+          printf("v_e_h cv->b.container:%d\n", cv->b.container );
 	if ( cv->b.container!=NULL )
 	    (cv->b.container->funcs->charEvent)(cv->b.container,event);
 	else
@@ -4897,6 +4899,7 @@ static void CVAddGuide(CharView *cv,int is_v,int guide_pos) {
 
 static int cv_e_h(GWindow gw, GEvent *event) {
     CharView *cv = (CharView *) GDrawGetUserData(gw);
+    printf("cv_e_h...\n");
 
     if (( event->type==et_mouseup || event->type==et_mousedown ) &&
 	    (event->u.mouse.button>=4 && event->u.mouse.button<=7) ) {
@@ -4908,6 +4911,13 @@ return( GGadgetDispatchEvent(cv->hsb,event));
 return( GGadgetDispatchEvent(cv->vsb,event));
     }
 
+    if( event->type == et_char || event->type == et_charup )
+    printf("et_char                       time:%ld\n", event->u.chr.time );
+    if( event->type == et_char )
+        printf("et_char down:%d state:%d\n", event->u.chr.keysym, event->u.chr.state );
+    if( event->type == et_charup )
+        printf("et_char   up:%d state:%d\n", event->u.chr.keysym, event->u.chr.state );
+    
     switch ( event->type ) {
       case et_selclear:
 	ClipboardClear();
@@ -4918,6 +4928,7 @@ return( GGadgetDispatchEvent(cv->vsb,event));
 	CVLogoExpose(cv,gw,event);
       break;
       case et_char:
+          printf("have container:%d\n", cv->b.container );
 	if ( cv->b.container!=NULL )
 	    (cv->b.container->funcs->charEvent)(cv->b.container,event);
 	else
@@ -6098,6 +6109,7 @@ static void CVMenuChangeChar(GWindow gw,struct gmenuitem *mi,GEvent *e) {
 
     _CVMenuChangeChar(cv,mi->mid);
 }
+
 
 void CVChar(CharView *cv, GEvent *event ) {
     extern float arrowAmount, arrowAccelFactor;
@@ -10598,6 +10610,8 @@ return;
 static int nested_cv_e_h(GWindow gw, GEvent *event) {
     CharView *cv = (CharView *) GDrawGetUserData(gw);
 
+    printf("nested_cv_e_h()\n");
+    
     switch ( event->type ) {
       case et_expose:
 	InfoExpose(cv,gw,event);
