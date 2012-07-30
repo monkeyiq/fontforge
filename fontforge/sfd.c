@@ -1281,7 +1281,7 @@ static void SFDDumpPattern(FILE *sfd, char *keyword, struct pattern *pattern) {
 }
 #endif
 
-static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int todir) {
+static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int todir,int saveUndoes) {
     ImageList *img;
     KernPair *kp;
     PST *pst;
@@ -1365,17 +1365,17 @@ static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int to
     SFDDumpAnchorPoints(sfd,sc);
     fprintf( sfd, "LayerCount: %d\n", sc->layer_cnt );
     for ( i=0; i<sc->layer_cnt; ++i ) {
-            /// FIXME: dump the undo stack for the layer
+        if( saveUndoes )
+        {
+            fprintf(sfd, "UndoRedoHistory\n" );
+            int idx = 0;
+            Undoes *undo = sc->layers[i].undoes;
+            for( ; undo; undo = undo->next, idx++ )
             {
-                fprintf(sfd, "UndoRedoHistory\n" );
-                int idx = 0;
-                Undoes *undo = sc->layers[i].undoes;
-                for( ; undo; undo = undo->next, idx++ )
-                {
-                    SFDDumpUndo( sfd, undo, "Undo", idx );
-                }
-                fprintf(sfd, "EndUndoRedoHistory\n" );
+                SFDDumpUndo( sfd, undo, "Undo", idx );
             }
+            fprintf(sfd, "EndUndoRedoHistory\n" );
+        }
         
 #ifdef FONTFORGE_CONFIG_TYPE3
 	if ( sc->parent->multilayer ) {
@@ -2440,14 +2440,14 @@ static int SFD_Dump(FILE *sfd,SplineFont *sf,EncMap *map,EncMap *normal,
 	for ( i=0; i<sf->glyphcnt; ++i ) {
 	    if ( !SFDOmit(sf->glyphs[i]) ) {
 		if ( !todir )
-		    SFDDumpChar(sfd,sf->glyphs[i],map,newgids,todir);
+		SFDDumpChar(sfd,sf->glyphs[i],map,newgids,todir,1);
 		else {
 		    char *glyphfile = galloc(strlen(dirname)+2*strlen(sf->glyphs[i]->name)+20);
 		    FILE *gsfd;
 		    appendnames(glyphfile,dirname,"/",sf->glyphs[i]->name,GLYPH_EXT );
 		    gsfd = fopen(glyphfile,"w");
 		    if ( gsfd!=NULL ) {
-			SFDDumpChar(gsfd,sf->glyphs[i],map,newgids,todir);
+			SFDDumpChar(gsfd,sf->glyphs[i],map,newgids,todir,1);
 			if ( ferror(gsfd)) err = true;
 			if ( fclose(gsfd)) err = true;
 		    } else
@@ -4636,10 +4636,6 @@ return( NULL );
                 while( undo = SFDGetUndo( sf, sfd, sc, current_layer ) ) 
                 {
                     printf("have undo... type:%d\n", undo->undotype );
-                    // push to front.
-//                    undo->next = sc->layers[current_layer].undoes;
-//                    sc->layers[current_layer].undoes = undo;
-
                     // push to back
                     if( last )
                         last->next = undo;
@@ -7912,7 +7908,7 @@ return;
 	    }
 	}
 	if ( ssf->glyphs[i]!=NULL && ssf->glyphs[i]->changed )
-	    SFDDumpChar( asfd,ssf->glyphs[i],map,NULL,false);
+	    SFDDumpChar( asfd,ssf->glyphs[i],map,NULL,false,1);
     }
     fprintf( asfd, "EndChars\n" );
     fprintf( asfd, "EndSplineFont\n" );
