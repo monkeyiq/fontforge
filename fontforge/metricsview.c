@@ -2942,27 +2942,6 @@ static void MVMenuSizeWindow(GWindow mgw,struct gmenuitem *mi,GEvent *e) {
     MVSetVSb(mv);
 }
 
-void MVSetPointSize( GWindow mgw, int ptsize, int dpi ) {
-    MetricsView *mv = (MetricsView *) GDrawGetUserData(mgw);
-
-    printf("MVSetPointSize() ptsize:%d\n", ptsize );
-    mv->pixelsize_set_by_window = 0;
-    mv->ptsize = ptsize;
-    if( dpi )
-        mv->dpi = dpi;
-    mv->pixelsize = rint( (mv->ptsize*mv->dpi)/72.0 );
-//    mv->pixelsize = mv_scales[SCALE_INDEX_NORMAL];
-    
-    if ( mv->bdf==NULL )
-	BDFFontFree(mv->show);
-    mv->bdf = NULL;
-    mv->show = SplineFontPieceMeal(mv->sf,mv->layer,mv->ptsize,mv->dpi,
-	    mv->antialias?(pf_antialias|pf_ft_recontext):pf_ft_recontext,NULL);
-    MVReKern(mv);
-    MVSetVSb(mv);
-}
-
-
 
 static void MVMenuChangePointSize(GWindow mgw,struct gmenuitem *mi,GEvent *e) {
     MetricsView *mv = (MetricsView *) GDrawGetUserData(mgw);

@@ -808,6 +808,71 @@ return( NULL );
 return( rle );
 }
 
+static void SFDDumpUndo(FILE *sfd,Undoes *u, char* keyPrefix, int idx )
+{
+    fprintf(sfd, "%sOperation\n",      keyPrefix );
+    fprintf(sfd, "Index: %d\n",        idx );
+    fprintf(sfd, "Type: %d\n",         u->undotype );
+    fprintf(sfd, "WasModified: %d\n",  u->was_modified );
+    fprintf(sfd, "WasOrder2: %d\n",    u->was_order2 );
+    
+    switch( u->undotype )
+    {
+        case ut_state:
+            fprintf(sfd, "Width: %d\n",           u->u.state.width );
+            fprintf(sfd, "VWidth: %d\n",          u->u.state.vwidth );
+            fprintf(sfd, "LBearingChange: %d\n",  u->u.state.lbearingchange );
+            fprintf(sfd, "UnicodeEnc: %d\n",      u->u.state.unicodeenc );
+            if( u->u.state.charname )
+                fprintf(sfd, "Charname: \"%s\"\n", u->u.state.charname );
+            if( u->u.state.comment )
+                fprintf(sfd, "Comment: \"%s\"\n", u->u.state.comment );
+            if( u->u.state.possub )
+            {
+                //PST *possub;
+            }
+
+            if( u->u.state.refs )
+            {
+	    /* struct refchar *refs; */
+            }
+            
+            if( u->u.state.images )
+            {
+                /* struct imagelist *images; */
+            }
+            if( u->u.state.hints )
+            {
+                /* void *hints;			/\* ut_statehint, ut_statename *\/ */
+            }
+            
+            fprintf(sfd, "InstructionsLength: %d\n", u->u.state.instrs_len );
+            /* uint8 *instrs; */
+            
+//	    AnchorPoint *anchor;
+            if( u->u.state.anchor )
+            {
+                fprintf(sfd, "AnchorX: %d\n", u->u.state.anchor->me.x );
+                fprintf(sfd, "AnchorY: %d\n", u->u.state.anchor->me.y );
+            }
+            
+            if( u->u.state.splines )
+            {
+                fprintf(sfd, "SplineSet\n", keyPrefix, idx );
+                SFDDumpSplineSet( sfd, u->u.state.splines );
+            }
+            
+#ifdef FONTFORGE_CONFIG_TYPE3
+            fprintf(sfd, "DoFill: %d\n", u->u.state.dofill );
+            fprintf(sfd, "DoStroke: %d\n", u->u.state.dostroke );
+            fprintf(sfd, "FillFirst: %d\n", u->u.state.fillfirst );
+#endif
+            break;
+    }
+
+    fprintf(sfd, "End%sOperation\n", keyPrefix );
+}
+
 static void SFDDumpImage(FILE *sfd,ImageList *img) {
     GImage *image = img->image;
     struct _GImage *base = image->list_len==0?image->u.image:image->u.images[0];
@@ -1300,6 +1365,18 @@ static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int to
     SFDDumpAnchorPoints(sfd,sc);
     fprintf( sfd, "LayerCount: %d\n", sc->layer_cnt );
     for ( i=0; i<sc->layer_cnt; ++i ) {
+            /// FIXME: dump the undo stack for the layer
+            {
+                fprintf(sfd, "UndoRedoHistory\n" );
+                int idx = 0;
+                Undoes *undo = sc->layers[i].undoes;
+                for( ; undo; undo = undo->next, idx++ )
+                {
+                    SFDDumpUndo( sfd, undo, "Undo", idx );
+                }
+                fprintf(sfd, "EndUndoRedoHistory\n" );
+            }
+        
 #ifdef FONTFORGE_CONFIG_TYPE3
 	if ( sc->parent->multilayer ) {
 	    fprintf(sfd, "Layer: %d  %d %d %d  #%06x %g  #%06x %g %g %s %s [%g %g %g %g] [",
@@ -3356,6 +3433,7 @@ static void SFDGetSpiros(FILE *sfd,SplineSet *cur) {
 	ungetc(ch,sfd);
 }
 
+
 static SplineSet *SFDGetSplineSet(SplineFont *sf,FILE *sfd,int order2) {
     SplinePointList *cur=NULL, *head=NULL;
     BasePoint current;
@@ -3511,6 +3589,75 @@ static SplineSet *SFDGetSplineSet(SplineFont *sf,FILE *sfd,int order2) {
 	cur->last->prev->acceptableextrema = true;
     getname(sfd,tok);
 return( head );
+}
+
+static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc, int current_layer )
+{
+    Undoes *u = 0;
+    char tok[2000], ch;
+    int i;
+
+    if ( getname(sfd,tok)!=1 )
+        return( NULL );
+    if ( strcmp(tok,"UndoOperation") )
+        return( NULL );
+
+    u = chunkalloc(sizeof(Undoes));
+    u->undotype = ut_state;
+    
+    while ( 1 )
+    {
+        if ( getname(sfd,tok)!=1 )
+        {
+            chunkfree(u,sizeof(Undoes));
+            return( NULL );
+        }
+        printf("SFDGetUndo tok:%s\n", tok );
+        if ( !strmatch(tok,"EndUndoOperation"))
+        {
+            return u;
+        }
+        if ( !strmatch(tok,"Index:"))
+        {
+            getint(sfd,&i);
+        }
+        if ( !strmatch(tok,"Type:"))
+        {
+            getint(sfd,&i);
+            u->undotype = i;
+        }
+        if ( !strmatch(tok,"WasModified:"))
+        {
+            getint(sfd,&i);
+            u->was_modified = i;
+        }
+        if ( !strmatch(tok,"WasOrder2:"))
+        {
+            getint(sfd,&i);
+            u->was_order2 = i;
+        }
+
+        switch( u->undotype )
+        {
+            case ut_state:
+                if ( !strmatch(tok,"Width:"))          { getint(sfd,&i); u->u.state.width = i; }
+                if ( !strmatch(tok,"VWidth:"))         { getint(sfd,&i); u->u.state.vwidth = i; }
+                if ( !strmatch(tok,"LBearingChange:")) { getint(sfd,&i); u->u.state.lbearingchange = i; }
+                if ( !strmatch(tok,"UnicodeEnc:"))     { getint(sfd,&i); u->u.state.unicodeenc = i; }
+                if ( !strmatch(tok,"Charname:"))       { u->u.state.charname = getquotedeol(sfd); }
+                if ( !strmatch(tok,"Comment:"))        { u->u.state.comment  = getquotedeol(sfd); }
+
+                if ( !strmatch(tok,"InstructionsLength:"))     { getint(sfd,&i); u->u.state.instrs_len = i; }
+
+                if ( !strmatch(tok,"SplineSet"))
+                {
+                    u->u.state.splines = SFDGetSplineSet(sf,sfd,sc->layers[current_layer].order2);
+                }
+                break;
+        }
+    }
+    
+    return u;
 }
 
 static void SFDGetMinimumDistances(FILE *sfd, SplineChar *sc) {
@@ -4177,6 +4324,7 @@ return( NULL );
 	    SplineCharFree(sc);
 return( NULL );
 	}
+            printf("tok:%s\n", tok );
 	if ( strmatch(tok,"Encoding:")==0 ) {
 	    int enc;
 	    getint(sfd,&enc);
@@ -4480,6 +4628,26 @@ return( NULL );
 	} else if ( strmatch(tok,"StrokePattern:")==0 ) {
 	    sc->layers[current_layer].stroke_pen.brush.pattern = SFDParsePattern(sfd,tok);
 #endif
+	} else if ( strmatch(tok,"UndoRedoHistory")==0 ) {
+
+                printf("UndoRedoHistory token found!\n");
+                Undoes *undo = 0;
+                struct undoes *last = sc->layers[current_layer].undoes;
+                while( undo = SFDGetUndo( sf, sfd, sc, current_layer ) ) 
+                {
+                    printf("have undo... type:%d\n", undo->undotype );
+                    // push to front.
+//                    undo->next = sc->layers[current_layer].undoes;
+//                    sc->layers[current_layer].undoes = undo;
+
+                    // push to back
+                    if( last )
+                        last->next = undo;
+                    else
+                        sc->layers[current_layer].undoes = undo;
+                    last = undo;
+                }
+                
 	} else if ( strmatch(tok,"SplineSet")==0 ) {
 	    sc->layers[current_layer].splines = SFDGetSplineSet(sf,sfd,sc->layers[current_layer].order2);
 	} else if ( strmatch(tok,"Ref:")==0 || strmatch(tok,"Refer:")==0 ) {

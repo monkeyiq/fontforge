@@ -4407,7 +4407,6 @@ return;
 
 static int v_e_h(GWindow gw, GEvent *event) {
     CharView *cv = (CharView *) GDrawGetUserData(gw);
-    printf("v_e_h 1...\n");
 
     GGadgetPopupExternalEvent(event);
     if (( event->type==et_mouseup || event->type==et_mousedown ) &&
@@ -4422,7 +4421,6 @@ return( GGadgetDispatchEvent(cv->hsb,event));
 return( GGadgetDispatchEvent(cv->vsb,event));
 	}
     }
-    printf("v_e_h 2...\n");
     switch ( event->type ) {
       case et_expose:
 	GDrawSetLineWidth(gw,0);
@@ -4448,7 +4446,6 @@ return( GGadgetDispatchEvent(cv->vsb,event));
 	CVMouseUp(cv,event);
       break;
       case et_char:
-          printf("v_e_h cv->b.container:%d\n", cv->b.container );
 	if ( cv->b.container!=NULL )
 	    (cv->b.container->funcs->charEvent)(cv->b.container,event);
 	else
@@ -4899,7 +4896,6 @@ static void CVAddGuide(CharView *cv,int is_v,int guide_pos) {
 
 static int cv_e_h(GWindow gw, GEvent *event) {
     CharView *cv = (CharView *) GDrawGetUserData(gw);
-    printf("cv_e_h...\n");
 
     if (( event->type==et_mouseup || event->type==et_mousedown ) &&
 	    (event->u.mouse.button>=4 && event->u.mouse.button<=7) ) {
@@ -4911,13 +4907,6 @@ return( GGadgetDispatchEvent(cv->hsb,event));
 return( GGadgetDispatchEvent(cv->vsb,event));
     }
 
-    if( event->type == et_char || event->type == et_charup )
-    printf("et_char                       time:%ld\n", event->u.chr.time );
-    if( event->type == et_char )
-        printf("et_char down:%d state:%d\n", event->u.chr.keysym, event->u.chr.state );
-    if( event->type == et_charup )
-        printf("et_char   up:%d state:%d\n", event->u.chr.keysym, event->u.chr.state );
-    
     switch ( event->type ) {
       case et_selclear:
 	ClipboardClear();
@@ -4928,7 +4917,6 @@ return( GGadgetDispatchEvent(cv->vsb,event));
 	CVLogoExpose(cv,gw,event);
       break;
       case et_char:
-          printf("have container:%d\n", cv->b.container );
 	if ( cv->b.container!=NULL )
 	    (cv->b.container->funcs->charEvent)(cv->b.container,event);
 	else
@@ -5287,11 +5275,9 @@ return;
     BitmapViewCreatePick(CVCurEnc(cv),(FontView *) (cv->b.fv));
 }
 
-void MVSetPointSize( GWindow mgw, int ptsize, int dpi );
 static void CVMenuOpenMetrics(GWindow gw,struct gmenuitem *mi,GEvent *e) {
     CharView *cv = (CharView *) GDrawGetUserData(gw);
-    MetricsView *mv = MetricsViewCreate((FontView *) (cv->b.fv),cv->b.sc,NULL);
-    MVSetPointSize( mv->gw, cv->scale * 1022, 0 );
+    MetricsViewCreate((FontView *) (cv->b.fv),cv->b.sc,NULL);
 }
 
 static void CVMenuSave(GWindow gw,struct gmenuitem *mi,GEvent *e) {
@@ -10610,8 +10596,6 @@ return;
 static int nested_cv_e_h(GWindow gw, GEvent *event) {
     CharView *cv = (CharView *) GDrawGetUserData(gw);
 
-    printf("nested_cv_e_h()\n");
-    
     switch ( event->type ) {
       case et_expose:
 	InfoExpose(cv,gw,event);
