@@ -459,6 +459,39 @@ static void ExtractHints(SplineChar *sc,void *hints,int docopy) {
     sc->vconflicts = StemInfoAnyOverlaps(v);
 }
 
+void UndoesFreeButRetainFirstN( Undoes** undopp, int retainAmount )
+{
+    printf("UndoesFreeButRetainFirstN(1) %d\n", retainAmount );
+    
+    if( !undopp || !*undopp )
+        return;
+    Undoes* undo = *undopp;
+    // wipe them all will change the list header pointer too
+    if( !retainAmount )
+    {
+        UndoesFree( undo );
+        *undopp = 0;
+        return;
+    }
+    printf("UndoesFreeButRetainFirstN(2) %d\n", retainAmount );
+
+    Undoes* undoprev = undo;
+    for( ; retainAmount > 0 && undo ; retainAmount-- )
+    {
+        undoprev = undo;
+        undo = undo->next;
+    }
+    printf("UndoesFreeButRetainFirstN(3) %d\n", retainAmount );
+    // not enough items to need to do a trim.
+    if( retainAmount > 0 )
+        return;
+
+    // break off and free the tail
+    UndoesFree( undo );
+    undoprev->next = 0;
+}
+
+
 void UndoesFree(Undoes *undo) {
     Undoes *unext;
     BDFRefChar *head, *next;
