@@ -46,6 +46,8 @@
 # define NAME_MAX _POSIX_NAME_MAX
 #endif
 
+#define SFD_VERSION_CONTAINS_UNDO_STACK 1
+
 extern struct compressors compressors[];
 
 /* I will retain this list in case there are still some really old sfd files */
@@ -1367,14 +1369,30 @@ static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int to
     for ( i=0; i<sc->layer_cnt; ++i ) {
         if( saveUndoes )
         {
-            fprintf(sfd, "UndoRedoHistory\n" );
-            int idx = 0;
-            Undoes *undo = sc->layers[i].undoes;
-            for( ; undo; undo = undo->next, idx++ )
+            if( sc->layers[i].undoes || sc->layers[i].redoes )
             {
-                SFDDumpUndo( sfd, undo, "Undo", idx );
+                fprintf(sfd, "UndoRedoHistory\n" );
+                fprintf(sfd, "Layer: %d\n", i );
+                int idx = 0;
+                Undoes *undo = 0;
+                fprintf(sfd, "Undoes\n" );
+                idx = 0;
+                undo = sc->layers[i].undoes;
+                for( ; undo; undo = undo->next, idx++ )
+                {
+                    SFDDumpUndo( sfd, undo, "Undo", idx );
+                }
+                fprintf(sfd, "EndUndoes\n" );
+                fprintf(sfd, "Redoes\n" );
+                idx = 0;
+                undo = sc->layers[i].redoes;
+                for( ; undo; undo = undo->next, idx++ )
+                {
+                    SFDDumpUndo( sfd, undo, "Redo", idx );
+                }
+                fprintf(sfd, "EndRedoes\n" );
+                fprintf(sfd, "EndUndoRedoHistory\n" );
             }
-            fprintf(sfd, "EndUndoRedoHistory\n" );
         }
         
 #ifdef FONTFORGE_CONFIG_TYPE3
@@ -2602,7 +2620,7 @@ static int SFDDump(FILE *sfd,SplineFont *sf,EncMap *map,EncMap *normal,
     ff_progress_start_indicator(10,_("Saving..."),_("Saving Spline Font Database"),_("Saving Outlines"),
 	    realcnt,i+1);
     ff_progress_enable_stop(false);
-    fprintf(sfd, "SplineFontDB: %.1f\n", 3.0 );
+    fprintf(sfd, "SplineFontDB: %.1f\n", 3.1 );
     if ( sf->mm != NULL )
 	err = SFD_MMDump(sfd,sf->mm->normal,map,normal,todir,dirname);
     else
@@ -3591,7 +3609,8 @@ static SplineSet *SFDGetSplineSet(SplineFont *sf,FILE *sfd,int order2) {
 return( head );
 }
 
-static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc, int current_layer )
+static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
+                           const char* startTag, const char* endTag, int current_layer )
 {
     Undoes *u = 0;
     char tok[2000], ch;
@@ -3599,7 +3618,8 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc, int curren
 
     if ( getname(sfd,tok)!=1 )
         return( NULL );
-    if ( strcmp(tok,"UndoOperation") )
+    printf("SFDGetUndo() tok:%s startTag:%s\n", tok, startTag );
+    if ( strcmp(tok, startTag) )
         return( NULL );
 
     u = chunkalloc(sizeof(Undoes));
@@ -3614,6 +3634,10 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc, int curren
         }
         printf("SFDGetUndo tok:%s\n", tok );
         if ( !strmatch(tok,"EndUndoOperation"))
+        {
+            return u;
+        }
+        if ( !strmatch(tok,"EndRedoOperation"))
         {
             return u;
         }
@@ -4631,20 +4655,47 @@ return( NULL );
 	} else if ( strmatch(tok,"UndoRedoHistory")==0 ) {
 
                 printf("UndoRedoHistory token found!\n");
-                Undoes *undo = 0;
-                struct undoes *last = sc->layers[current_layer].undoes;
-                while( undo = SFDGetUndo( sf, sfd, sc, current_layer ) ) 
+
+                getname(sfd,tok);
+                if ( !strmatch(tok,"Layer:") )
                 {
-                    printf("have undo... type:%d\n", undo->undotype );
-                    // push to back
-                    if( last )
-                        last->next = undo;
-                    else
-                        sc->layers[current_layer].undoes = undo;
-                    last = undo;
+                    int layer;
+                    getint(sfd,&layer);
                 }
                 
-	} else if ( strmatch(tok,"SplineSet")==0 ) {
+                Undoes *undo = 0;
+                struct undoes *last = 0;
+                
+                getname(sfd,tok);
+                if ( !strmatch(tok,"Undoes") )
+                {
+                    undo = 0;
+                    last = sc->layers[current_layer].undoes;
+                    while( undo = SFDGetUndo( sf, sfd, sc, "UndoOperation", "EndUndoOperation", current_layer ) ) 
+                    {
+                        printf("have undo... type:%d\n", undo->undotype );
+                        // push to back
+                        if( last ) last->next = undo;
+                        else       sc->layers[current_layer].undoes = undo;
+                        last = undo;
+                    }
+                }
+                
+                getname(sfd,tok);
+                if ( !strmatch(tok,"Redoes") )
+                {
+                    undo = 0;
+                    last = sc->layers[current_layer].redoes;
+                    while( undo = SFDGetUndo( sf, sfd, sc, "RedoOperation", "EndRedoOperation", current_layer ) ) 
+                    {
+                        printf("have a redo operation!\n");
+                        // push to back
+                        if( last ) last->next = undo;
+                        else       sc->layers[current_layer].redoes = undo;
+                        last = undo;
+                    }
+                }
+            } else if ( strmatch(tok,"SplineSet")==0 ) {
 	    sc->layers[current_layer].splines = SFDGetSplineSet(sf,sfd,sc->layers[current_layer].order2);
 	} else if ( strmatch(tok,"Ref:")==0 || strmatch(tok,"Refer:")==0 ) {
 	    /* I should be depending on the version number here, but I made */
@@ -7482,8 +7533,12 @@ return( -1 );
     /*  this sequence, but I don't yet generate it. I want the parser to */
     /*  perculate through to users before I introduce the new format so there */
     /*  will be fewer complaints when it happens */
-    if ( dval!=0 && dval!=1 && dval!=2.0 && dval!=3.0 && dval!=4.0 ) {
-	LogError(_("Bad SFD Version number %.1f"), dval );
+    // MIQ: getreal() can give some funky rounding errors it seems
+    if ( dval!=0 && dval!=1 && dval!=2.0 && dval!=3.0
+         && !(dval > 3.09 && dval <= 3.11)
+         && dval!=4.0 )
+    {
+        LogError("Bad SFD Version number %.1f", dval );
 return( -1 );
     }
     ch = nlgetc(sfd); ungetc(ch,sfd);
