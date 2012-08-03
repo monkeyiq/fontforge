@@ -1027,6 +1027,12 @@ static void SFDDumpUndo(FILE *sfd,SplineChar *sc,Undoes *u, char* keyPrefix, int
             break;
         }
         
+        case ut_width:
+        {
+            fprintf(sfd, "Width: %d\n", u->u.width );
+            break;
+        }
+        
     }
 
     fprintf(sfd, "End%sOperation\n", keyPrefix );
@@ -3873,7 +3879,6 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
                 }
             }
             
-            
             return u;
         }
         if ( !strmatch(tok,"Index:"))
@@ -3992,6 +3997,13 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
                 
 //                if( u->copied_from && u->copied_from->fullname )
 //                    fprintf(sfd, "CopiedFrom: %s\n", u->copied_from->fullname );
+                break;
+            }
+            
+            case ut_width:
+            {
+                if( !strmatch(tok,"Width:"))
+                    { getint(sfd,&i); u->u.width = i; }
                 break;
             }
                 
