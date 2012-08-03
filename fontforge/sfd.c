@@ -3853,7 +3853,8 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
             return( NULL );
         }
         printf("SFDGetUndo tok:%s\n", tok );
-        if ( !strmatch(tok,"EndUndoOperation"))
+        if ( !strmatch(tok,"EndUndoOperation")
+            || !strmatch(tok,"EndRedoOperation"))
         {
             printf("getUndo(end)  type:%d  want:%d\n", u->undotype, ut_state );
             if( u->undotype == ut_state )
@@ -3873,10 +3874,6 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
             }
             
             
-            return u;
-        }
-        if ( !strmatch(tok,"EndRedoOperation"))
-        {
             return u;
         }
         if ( !strmatch(tok,"Index:"))
