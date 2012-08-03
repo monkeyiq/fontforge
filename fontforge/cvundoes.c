@@ -38,6 +38,43 @@ int copymetadata = 0;
 int copyttfinstr = 0;
 int export_clipboard = 1;
 
+///////////
+
+#include <execinfo.h>
+#include <stdio.h>
+
+void BackTraceFD( int fd )
+{
+    const int arraysz = 500;
+    void* array[arraysz];
+    size_t size;
+    
+    size = backtrace( array, arraysz );
+    backtrace_symbols_fd( array, size, fd );
+    
+    /* char** symbarray = backtrace_symbols( array, size ); */
+    /* if( symbarray ) */
+    /* { */
+    /*     int i=0; */
+    /*     for( i=0; i < size; ++i ) */
+    /*     { */
+    /*         const char* s = symbarray[i]; */
+    /*         printf("sym:%s\n", s ); */
+    /*     } */
+        
+    /* } */
+    
+        
+    
+}
+
+void BackTrace( const char* msg )
+{
+    fprintf( stderr, msg );
+    BackTraceFD( 2 );
+}
+
+
 /* ********************************* Undoes ********************************* */
 
 int maxundoes = 12;		/* -1 is infinite */
@@ -381,7 +418,7 @@ return;
     }
 }
 
-static void *UHintCopy(SplineChar *sc,int docopy) {
+void *UHintCopy(SplineChar *sc,int docopy) {
     StemInfo *h = sc->hstem, *v = sc->vstem, *last=NULL;
     DStemInfo *d = sc->dstem;
     void *ret = NULL;
@@ -418,7 +455,7 @@ static void *UHintCopy(SplineChar *sc,int docopy) {
 return(ret);
 }
 
-static void ExtractHints(SplineChar *sc,void *hints,int docopy) {
+void ExtractHints(SplineChar *sc,void *hints,int docopy) {
     StemInfo *h = NULL, *v = NULL, *p;
     DStemInfo *d = NULL;
     StemInfo *pv = NULL, *pd = NULL;
@@ -574,9 +611,11 @@ static Undoes *AddUndo(Undoes *undo,Undoes **uhead,Undoes **rhead) {
 return( undo );
 }
 
-static Undoes *CVAddUndo(CharViewBase *cv,Undoes *undo) {
-return( AddUndo(undo,&cv->layerheads[cv->drawmode]->undoes,
-	&cv->layerheads[cv->drawmode]->redoes));
+static Undoes *CVAddUndo(CharViewBase *cv,Undoes *undo)
+{
+    BackTrace("CVAddUndo()");
+    return( AddUndo(undo,&cv->layerheads[cv->drawmode]->undoes,
+                    &cv->layerheads[cv->drawmode]->redoes));
 }
 
 int CVLayer(CharViewBase *cv) {

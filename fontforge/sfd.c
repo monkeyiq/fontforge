@@ -50,6 +50,10 @@
 
 extern struct compressors compressors[];
 
+static char *joins[] = { "miter", "round", "bevel", "inher", NULL };
+static char *caps[] = { "butt", "round", "square", "inher", NULL };
+static char *spreads[] = { "pad", "reflect", "repeat", NULL };
+
 /* I will retain this list in case there are still some really old sfd files */
 /*  including numeric encodings.  This table maps them to string encodings */
 static const char *charset_names[] = {
@@ -110,6 +114,20 @@ static char base64[64] = {
  'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
  'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
  'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'};
+
+static void SFDDumpRefs(FILE *sfd,RefChar *refs, char *name,EncMap *map, int *newgids);
+static RefChar *SFDGetRef(FILE *sfd, int was_enc);
+static void SFDDumpImage(FILE *sfd,ImageList *img);
+static AnchorPoint *SFDReadAnchorPoints(FILE *sfd,SplineChar *sc,AnchorPoint** alist, AnchorPoint *lastap);
+static const char *end_tt_instrs = "EndTTInstrs";
+static void SFDDumpTtfInstrs(FILE *sfd,SplineChar *sc);
+static void SFDDumpTtfInstrsExplicit(FILE *sfd,SplineChar *sc, uint8 *ttf_instrs, int16 ttf_instrs_len );
+static void SFDDumpHintList(FILE *sfd,char *key, StemInfo *h);
+static void SFDDumpDHintList( FILE *sfd,char *key, DStemInfo *d );
+static StemInfo *SFDReadHints(FILE *sfd);
+static DStemInfo *SFDReadDHints( SplineFont *sf,FILE *sfd,int old );
+extern void ExtractHints(SplineChar *sc,void *hints,int docopy);
+extern void *UHintCopy(SplineChar *sc,int docopy);
 
 static void utf7_encode(FILE *sfd,long ch) {
 
@@ -701,10 +719,10 @@ return;
 }
 #endif
 
-static void SFDDumpAnchorPoints(FILE *sfd,SplineChar *sc) {
-    AnchorPoint *ap;
-
-    for ( ap = sc->anchor; ap!=NULL; ap=ap->next ) {
+static void SFDDumpAnchorPoints(FILE *sfd,AnchorPoint *ap)
+{
+    for ( ; ap; ap=ap->next )
+    {
 	fprintf( sfd, "AnchorPoint: " );
 	SFDDumpUTF7Str(sfd,ap->anchor->name);
 	fprintf( sfd, "%g %g %s %d",
@@ -716,7 +734,8 @@ static void SFDDumpAnchorPoints(FILE *sfd,SplineChar *sc) {
 		ap->type==at_baselig ? "baselig" : "basemark",
 		ap->lig_index );
 #ifdef FONTFORGE_CONFIG_DEVICETABLES
-	if ( ap->xadjust.corrections!=NULL || ap->yadjust.corrections!=NULL ) {
+	if ( ap->xadjust.corrections!=NULL || ap->yadjust.corrections!=NULL )
+            {
 	    putc(' ',sfd);
 	    SFDDumpDeviceTable(sfd,&ap->xadjust);
 	    putc(' ',sfd);
@@ -728,6 +747,7 @@ static void SFDDumpAnchorPoints(FILE *sfd,SplineChar *sc) {
 	putc('\n',sfd);
     }
 }
+
 
 /* Run length encoding */
 /* We always start with a background pixel(1), each line is a series of counts */
@@ -810,17 +830,117 @@ return( NULL );
 return( rle );
 }
 
-static void SFDDumpUndo(FILE *sfd,Undoes *u, char* keyPrefix, int idx )
+static void SFDDumpBrush( FILE *sfd, struct brush* brush )
+{
+    fprintf(sfd, "Brush: #%06x %g\n", brush->col, brush->opacity );
+    if( brush->gradient )
+        SFDDumpGradient(sfd,"Gradient:", brush->gradient );
+    if( brush->pattern )
+        SFDDumpPattern(sfd,"Pattern:", brush->pattern );
+    fprintf(sfd, "EndBrush\n");
+}
+
+static void SFDDumpPen( FILE *sfd, struct pen* p )
+{
+    fprintf(sfd, "Pen: %g %s %s [%g %g %g %g] [",
+            p->width, joins[p->linejoin], caps[p->linecap],
+            (double) p->trans[0], (double) p->trans[1],
+            (double) p->trans[2], (double) p->trans[3] );
+    if ( p->dashes[0]==0 && p->dashes[1]==DASH_INHERITED )
+        fprintf(sfd,"0 %d]\n", DASH_INHERITED);
+    else
+    {
+        int j;
+        for ( j=0; j<DASH_MAX && p->dashes[j]!=0; ++j )
+            fprintf( sfd,"%d ", p->dashes[j]);
+        fprintf(sfd,"]\n");
+    }
+    SFDDumpBrush( sfd, &p->brush );
+    fprintf(sfd, "EndPen\n");
+}
+
+
+RefChar* createTestRefChar( SplineChar *sc )
+{
+    RefChar* ref = RefCharCreate();
+
+    ref->unicode_enc  = 3;
+    ref->orig_pos     = 4;
+    ref->adobe_enc    = getAdobeEnc("g");
+    ref->transform[0] = ref->transform[3] = 1.0;
+    ref->sc = sc;
+    
+    return ref;
+}
+
+AnchorPoint* createTestAnchor()
+{
+    AnchorPoint* ap = chunkalloc(sizeof(AnchorPoint));
+    ap->anchor = chunkalloc(sizeof(AnchorClass));
+    ap->anchor->name = utf8_verify_copy("abc");
+
+    ap->me.x = 1.2;
+    ap->me.y = 3.4;
+    ap->type=at_mark;
+    ap->lig_index = 5;
+    ap->has_ttf_pt = 1;
+    ap->ttf_pt_index = 6;
+
+    ap->next = 0;
+    return ap;
+}
+struct imagelist * createTestImageList()
+{
+    struct imagelist * il = 0;
+    return il;
+}
+
+
+static void UndoesPushTestObjects( SplineChar *sc, Undoes ** ulist )
+{
+    Undoes *undo = chunkalloc(sizeof(Undoes));
+
+    undo->undotype        = ut_state;
+    undo->was_modified    = 1;
+    undo->was_order2      = 1;
+    undo->u.state.width   = 4321;
+    undo->u.state.vwidth  = 102;
+    undo->u.state.splines = 0;
+    undo->u.state.refs    = createTestRefChar( sc );
+    undo->u.state.anchor  = createTestAnchor();
+    undo->u.state.images  = createTestImageList();
+
+#ifdef FONTFORGE_CONFIG_TYPE3
+    /* BrushCopy(&undo->u.state.fill_brush,&cv->layerheads[cv->drawmode]->fill_brush,NULL); */
+    /* PenCopy(&undo->u.state.stroke_pen,&cv->layerheads[cv->drawmode]->stroke_pen,NULL); */
+    /* undo->u.state.dofill = cv->layerheads[cv->drawmode]->dofill; */
+    /* undo->u.state.dostroke = cv->layerheads[cv->drawmode]->dostroke; */
+    /* undo->u.state.fillfirst = cv->layerheads[cv->drawmode]->fillfirst; */
+#endif
+
+    undo->next = *ulist;
+    *ulist = undo;
+}
+
+
+static void SFDDumpUndo(FILE *sfd,SplineChar *sc,Undoes *u, char* keyPrefix, int idx )
 {
     fprintf(sfd, "%sOperation\n",      keyPrefix );
     fprintf(sfd, "Index: %d\n",        idx );
     fprintf(sfd, "Type: %d\n",         u->undotype );
     fprintf(sfd, "WasModified: %d\n",  u->was_modified );
     fprintf(sfd, "WasOrder2: %d\n",    u->was_order2 );
+
+    printf("UNDO Type: %d\n", u->undotype );
+    if( u->undotype == ut_state )
+        printf("UNDO Type: %d width:%d \n", u->undotype, u->u.state.width );
     
     switch( u->undotype )
     {
         case ut_state:
+            printf("w:%d vw:%d lb:%d ue:%d images:%p\n", u->u.state.width, u->u.state.vwidth,
+                   u->u.state.lbearingchange, u->u.state.unicodeenc, u->u.state.images );
+                   
             fprintf(sfd, "Width: %d\n",           u->u.state.width );
             fprintf(sfd, "VWidth: %d\n",          u->u.state.vwidth );
             fprintf(sfd, "LBearingChange: %d\n",  u->u.state.lbearingchange );
@@ -836,12 +956,14 @@ static void SFDDumpUndo(FILE *sfd,Undoes *u, char* keyPrefix, int idx )
 
             if( u->u.state.refs )
             {
-	    /* struct refchar *refs; */
+                printf("saving some refs too!\n");
+                SFDDumpRefs( sfd, u->u.state.refs, 0, 0, 0 );
             }
             
             if( u->u.state.images )
             {
-                /* struct imagelist *images; */
+                printf("have an image for this undo...\n");
+                SFDDumpImage( sfd, u->u.state.images );
             }
             if( u->u.state.hints )
             {
@@ -851,11 +973,9 @@ static void SFDDumpUndo(FILE *sfd,Undoes *u, char* keyPrefix, int idx )
             fprintf(sfd, "InstructionsLength: %d\n", u->u.state.instrs_len );
             /* uint8 *instrs; */
             
-//	    AnchorPoint *anchor;
             if( u->u.state.anchor )
             {
-                fprintf(sfd, "AnchorX: %d\n", u->u.state.anchor->me.x );
-                fprintf(sfd, "AnchorY: %d\n", u->u.state.anchor->me.y );
+                SFDDumpAnchorPoints( sfd, u->u.state.anchor );
             }
             
             if( u->u.state.splines )
@@ -865,11 +985,48 @@ static void SFDDumpUndo(FILE *sfd,Undoes *u, char* keyPrefix, int idx )
             }
             
 #ifdef FONTFORGE_CONFIG_TYPE3
+//            SFDDumpBrush( sfd, &u->u.state.fill_brush );
+//            SFDDumpPen(   sfd, &u->u.state.stroke_pen );
             fprintf(sfd, "DoFill: %d\n", u->u.state.dofill );
             fprintf(sfd, "DoStroke: %d\n", u->u.state.dostroke );
             fprintf(sfd, "FillFirst: %d\n", u->u.state.fillfirst );
 #endif
             break;
+
+            
+        case ut_statehint:
+        {
+            SplineChar* tsc = 0;
+            tsc = SplineCharCopy( sc, 0, 0 );
+            ExtractHints( tsc, u->u.state.hints, 1 );
+            SFDDumpHintList(  sfd, "HStem: ",  tsc->hstem);
+            SFDDumpHintList(  sfd, "VStem: ",  tsc->vstem);
+            SFDDumpDHintList( sfd, "DStem2: ", tsc->dstem);
+            SplineCharFree( tsc );
+            
+            if( u->u.state.instrs_len )
+                SFDDumpTtfInstrsExplicit( sfd, sc, u->u.state.instrs, u->u.state.instrs_len );
+            break;
+        }
+
+        case ut_hints:
+        {
+            SplineChar* tsc = 0;
+            tsc = SplineCharCopy( sc, 0, 0 );
+            tsc->ttf_instrs = 0;
+            ExtractHints( tsc, u->u.state.hints, 1 );
+            SFDDumpHintList(  sfd, "HStem: ",  tsc->hstem);
+            SFDDumpHintList(  sfd, "VStem: ",  tsc->vstem);
+            SFDDumpDHintList( sfd, "DStem2: ", tsc->dstem);
+            SplineCharFree( tsc );
+
+            if( u->u.state.instrs_len )
+                SFDDumpTtfInstrsExplicit( sfd, sc, u->u.state.instrs, u->u.state.instrs_len );
+            if( u->copied_from && u->copied_from->fullname )
+                fprintf(sfd, "CopiedFrom: %s\n", u->copied_from->fullname );
+            break;
+        }
+        
     }
 
     fprintf(sfd, "End%sOperation\n", keyPrefix );
@@ -938,7 +1095,8 @@ static void SFDDumpImage(FILE *sfd,ImageList *img) {
     fprintf(sfd,"\nEndImage\n" );
 }
 
-static void SFDDumpHintList(FILE *sfd,char *key, StemInfo *h) {
+static void SFDDumpHintList(FILE *sfd,char *key, StemInfo *h)
+{
     HintInstance *hi;
 
     if ( h==NULL )
@@ -976,10 +1134,9 @@ return;
     }
 }
 
-static const char *end_tt_instrs = "EndTTInstrs";
-static void SFDDumpTtfInstrs(FILE *sfd,SplineChar *sc) {
-#if 1
-    char *instrs = _IVUnParseInstrs( sc->ttf_instrs,sc->ttf_instrs_len );
+static void SFDDumpTtfInstrsExplicit(FILE *sfd,SplineChar *sc, uint8 *ttf_instrs, int16 ttf_instrs_len )
+{
+    char *instrs = _IVUnParseInstrs( ttf_instrs, ttf_instrs_len );
     char *pt;
     fprintf( sfd, "TtInstrs:\n" );
     for ( pt=instrs; *pt!='\0'; ++pt )
@@ -988,19 +1145,10 @@ static void SFDDumpTtfInstrs(FILE *sfd,SplineChar *sc) {
 	putc('\n',sfd);
     free(instrs);
     fprintf( sfd, "%s\n", end_tt_instrs );
-#else
-    struct enc85 enc;
-    int i;
-
-    memset(&enc,'\0',sizeof(enc));
-    enc.sfd = sfd;
-
-    fprintf( sfd, "TtfInstrs: %d\n", sc->ttf_instrs_len );
-    for ( i=0; i<sc->ttf_instrs_len; ++i )
-	SFDEnc85(&enc,sc->ttf_instrs[i]);
-    SFDEnc85EndEnc(&enc);
-    fprintf(sfd,"\nEndTtf\n" );
-#endif
+}
+static void SFDDumpTtfInstrs(FILE *sfd,SplineChar *sc)
+{
+    SFDDumpTtfInstrsExplicit( sfd, sc, sc->ttf_instrs,sc->ttf_instrs_len );
 }
 
 static void SFDDumpTtfTable(FILE *sfd,struct ttf_table *tab,SplineFont *sf) {
@@ -1251,9 +1399,6 @@ return( PyFF_UnPickleMeToObjects(buf));
 }
 
 #ifdef FONTFORGE_CONFIG_TYPE3
-static char *joins[] = { "miter", "round", "bevel", "inher", NULL };
-static char *caps[] = { "butt", "round", "square", "inher", NULL };
-static char *spreads[] = { "pad", "reflect", "repeat", NULL };
 
 static void SFDDumpGradient(FILE *sfd, char *keyword, struct gradient *gradient) {
     int i;
@@ -1364,7 +1509,7 @@ static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int to
     }
     if ( sc->ttf_instrs_len!=0 )
 	SFDDumpTtfInstrs(sfd,sc);
-    SFDDumpAnchorPoints(sfd,sc);
+    SFDDumpAnchorPoints(sfd,sc->anchor);
     fprintf( sfd, "LayerCount: %d\n", sc->layer_cnt );
     for ( i=0; i<sc->layer_cnt; ++i ) {
         if( saveUndoes )
@@ -1375,12 +1520,15 @@ static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int to
                 fprintf(sfd, "Layer: %d\n", i );
                 int idx = 0;
                 Undoes *undo = 0;
+
+                
                 fprintf(sfd, "Undoes\n" );
                 idx = 0;
                 undo = sc->layers[i].undoes;
+//                UndoesPushTestObjects( sc, &undo );
                 for( ; undo; undo = undo->next, idx++ )
                 {
-                    SFDDumpUndo( sfd, undo, "Undo", idx );
+                    SFDDumpUndo( sfd, sc, undo, "Undo", idx );
                 }
                 fprintf(sfd, "EndUndoes\n" );
                 fprintf(sfd, "Redoes\n" );
@@ -1388,7 +1536,7 @@ static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int to
                 undo = sc->layers[i].redoes;
                 for( ; undo; undo = undo->next, idx++ )
                 {
-                    SFDDumpUndo( sfd, undo, "Redo", idx );
+                    SFDDumpUndo( sfd, sc, undo, "Redo", idx );
                 }
                 fprintf(sfd, "EndRedoes\n" );
                 fprintf(sfd, "EndUndoRedoHistory\n" );
@@ -3609,13 +3757,85 @@ static SplineSet *SFDGetSplineSet(SplineFont *sf,FILE *sfd,int order2) {
 return( head );
 }
 
+#define VERIFYVALORRET( actual, expected, msg ) \
+    if( actual != expected ) { \
+        printf("VerifyTestObjects() FAILED because %s is not correct..\n",msg); \
+    }
+
+    
+static void verifyTestRefChar( SplineChar *sc, RefChar* ref )
+{
+    VERIFYVALORRET( ref->unicode_enc, 3, "ref:unicode_enc" );
+    VERIFYVALORRET( ref->orig_pos,    4, "ref:orig_pos" );
+    VERIFYVALORRET( ref->adobe_enc,   getAdobeEnc("g"), "ref:adobe_enc" );
+    VERIFYVALORRET( ref->transform[0], 1.0, "ref:transform[0]" );
+    VERIFYVALORRET( ref->transform[3], 1.0, "ref:transform[3]" );
+}
+
+static void verifyTestAnchor( SplineChar *sc,  AnchorPoint* ap )
+{
+    
+}
+
+static void verifyTestImageList( SplineChar *sc, struct imagelist * images )
+{
+    
+}
+
+
+static void VerifyTestObjects( SplineChar *sc, Undoes *u )
+{
+    printf("VerifyTestObjects(top)\n");
+    
+    if( u->undotype != ut_state
+        || u->u.state.width != 4321 )
+    {
+        printf("VerifyTestObjects() FAILED because magic state/width combination not set!\n");
+        return;
+    }
+
+    if( u->was_modified != 1 )
+    {
+        printf("VerifyTestObjects() FAILED because   was_modified   is not correct.\n");
+        return;
+    }
+    
+    if( u->was_order2 != 1 )
+    {
+        printf("VerifyTestObjects() FAILED because    was_order2   is not correct.\n");
+        return;
+    }
+
+    if( u->u.state.width != 4321 )
+    {
+        printf("VerifyTestObjects() FAILED because    width   is not correct.\n");
+        return;
+    }
+
+    if( u->u.state.vwidth != 102 )
+    {
+        printf("VerifyTestObjects() FAILED because    vwidth   is not correct.\n");
+        return;
+    }
+
+    verifyTestRefChar( sc, u->u.state.refs );
+    verifyTestAnchor( sc,  u->u.state.anchor );
+    verifyTestImageList( sc, u->u.state.images );
+}
+
+
 static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
                            const char* startTag, const char* endTag, int current_layer )
 {
     Undoes *u = 0;
     char tok[2000], ch;
     int i;
-
+    RefChar *lastr=NULL;
+    ImageList *lasti=NULL;
+    AnchorPoint *lastap = NULL;
+    SplineChar* tsc = 0;
+    int haveReadAHint = 0;
+    
     if ( getname(sfd,tok)!=1 )
         return( NULL );
     printf("SFDGetUndo() tok:%s startTag:%s\n", tok, startTag );
@@ -3624,7 +3844,7 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
 
     u = chunkalloc(sizeof(Undoes));
     u->undotype = ut_state;
-    
+
     while ( 1 )
     {
         if ( getname(sfd,tok)!=1 )
@@ -3635,6 +3855,24 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
         printf("SFDGetUndo tok:%s\n", tok );
         if ( !strmatch(tok,"EndUndoOperation"))
         {
+            printf("getUndo(end)  type:%d  want:%d\n", u->undotype, ut_state );
+            if( u->undotype == ut_state )
+                printf("getUndo(end) width:%d\n", u->u.state.width );
+            if( u->undotype == ut_state && u->u.state.width == 4321 )
+            {
+                VerifyTestObjects( sc, u );
+            }
+
+            if( u->undotype == ut_hints )
+            {
+                if( tsc )
+                {
+                    u->u.state.hints = UHintCopy(tsc,1);
+                    SplineCharFree( tsc );
+                }
+            }
+            
+            
             return u;
         }
         if ( !strmatch(tok,"EndRedoOperation"))
@@ -3649,6 +3887,13 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
         {
             getint(sfd,&i);
             u->undotype = i;
+            if( u->undotype == ut_hints )
+            {
+                tsc = SplineCharCopy( sc, 0, 0 );
+                tsc->hstem = 0;
+                tsc->vstem = 0;
+                tsc->dstem = 0;
+            }
         }
         if ( !strmatch(tok,"WasModified:"))
         {
@@ -3671,16 +3916,91 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
                 if ( !strmatch(tok,"Charname:"))       { u->u.state.charname = getquotedeol(sfd); }
                 if ( !strmatch(tok,"Comment:"))        { u->u.state.comment  = getquotedeol(sfd); }
 
+                if( !strmatch(tok,"Refer:"))
+                {
+                    RefChar *ref = SFDGetRef(sfd,strmatch(tok,"Ref:")==0);
+                    if ( !u->u.state.refs )
+                        u->u.state.refs = ref;
+                    else
+		lastr->next = ref;
+                    lastr = ref;
+                }
+
+                if( !strmatch(tok,"Image:"))
+                {
+                    int ly = current_layer;
+                    ImageList *img = SFDGetImage(sfd);
+                    if ( !u->u.state.images )
+		u->u.state.images = img;
+                    else
+		lasti->next = img;
+                    lasti = img;
+                }
+                
+                
+                if ( !strmatch(tok,"Comment:"))
+                {
+                    u->u.state.comment  = getquotedeol(sfd);
+                }
+
                 if ( !strmatch(tok,"InstructionsLength:"))     { getint(sfd,&i); u->u.state.instrs_len = i; }
 
+                if( !strmatch(tok,"AnchorPoint:") )
+                {
+                    lastap = SFDReadAnchorPoints( sfd, sc, &(u->u.state.anchor), lastap );
+                }
+                
+                
                 if ( !strmatch(tok,"SplineSet"))
                 {
                     u->u.state.splines = SFDGetSplineSet(sf,sfd,sc->layers[current_layer].order2);
                 }
+
+#ifdef FONTFORGE_CONFIG_TYPE3
+
+                if ( !strmatch(tok,"DoFill:"))       { getint(sfd,&i); u->u.state.dofill = i; }
+                if ( !strmatch(tok,"DoStroke:"))     { getint(sfd,&i); u->u.state.dostroke = i; }
+                if ( !strmatch(tok,"FillFirst:"))    { getint(sfd,&i); u->u.state.fillfirst = i; }
+#endif
+            
                 break;
+
+            case ut_hints:
+            {
+                if ( !strmatch(tok,"HStem:") )
+                {
+                    tsc->hstem = SFDReadHints(sfd);
+                    tsc->hconflicts = StemListAnyConflicts(tsc->hstem);
+                    haveReadAHint = 1;
+                }
+                else if ( !strmatch(tok,"VStem:") )
+                {
+                    tsc->vstem = SFDReadHints(sfd);
+                    tsc->vconflicts = StemListAnyConflicts(tsc->vstem);
+                    haveReadAHint = 1;
+                }
+                else if( !strmatch(tok,"DStem2:"))
+                {
+                    tsc->dstem = SFDReadDHints( sc->parent,sfd,false );
+                    haveReadAHint = 1;
+                }
+                else if( !strmatch(tok,"TtInstrs:"))
+                {
+                    SFDGetTtInstrs(sfd,tsc);
+                    u->u.state.instrs = tsc->ttf_instrs;
+                    u->u.state.instrs_len = tsc->ttf_instrs_len;
+                    tsc->ttf_instrs = 0;
+                    tsc->ttf_instrs_len = 0;
+                }
+                
+//                if( u->copied_from && u->copied_from->fullname )
+//                    fprintf(sfd, "CopiedFrom: %s\n", u->copied_from->fullname );
+                break;
+            }
+                
         }
     }
-    
+
     return u;
 }
 
@@ -3977,7 +4297,8 @@ static void SFDSkipValDevTab(FILE *sfd) {
 }
 #endif
 
-static AnchorPoint *SFDReadAnchorPoints(FILE *sfd,SplineChar *sc,AnchorPoint *lastap) {
+static AnchorPoint *SFDReadAnchorPoints(FILE *sfd,SplineChar *sc,AnchorPoint** alist, AnchorPoint *lastap)
+{
     AnchorPoint *ap = chunkalloc(sizeof(AnchorPoint));
     AnchorClass *an;
     char *name;
@@ -4033,11 +4354,75 @@ return( lastap );
 return( lastap );
     }
     if ( lastap==NULL )
-	sc->anchor = ap;
+        (*alist) = ap;
     else
-	lastap->next = ap;
-return( ap );
+        lastap->next = ap;
+    
+    return( ap );
 }
+
+
+/* static AnchorPoint *SFDReadAnchorPoints(FILE *sfd,SplineChar *sc,AnchorPoint *lastap) { */
+/*     AnchorPoint *ap = chunkalloc(sizeof(AnchorPoint)); */
+/*     AnchorClass *an; */
+/*     char *name; */
+/*     char tok[200]; */
+/*     int ch; */
+
+/*     name = SFDReadUTF7Str(sfd); */
+/*     if ( name==NULL ) { */
+/* 	LogError( "Anchor Point with no class name: %s", sc->name ); */
+/* return( lastap ); */
+/*     } */
+/*     for ( an=sc->parent->anchor; an!=NULL && strcmp(an->name,name)!=0; an=an->next ); */
+/*     free(name); */
+/*     ap->anchor = an; */
+/*     getreal(sfd,&ap->me.x); */
+/*     getreal(sfd,&ap->me.y); */
+/*     ap->type = -1; */
+/*     if ( getname(sfd,tok)==1 ) { */
+/* 	if ( strcmp(tok,"mark")==0 ) */
+/* 	    ap->type = at_mark; */
+/* 	else if ( strcmp(tok,"basechar")==0 ) */
+/* 	    ap->type = at_basechar; */
+/* 	else if ( strcmp(tok,"baselig")==0 ) */
+/* 	    ap->type = at_baselig; */
+/* 	else if ( strcmp(tok,"basemark")==0 ) */
+/* 	    ap->type = at_basemark; */
+/* 	else if ( strcmp(tok,"entry")==0 ) */
+/* 	    ap->type = at_centry; */
+/* 	else if ( strcmp(tok,"exit")==0 ) */
+/* 	    ap->type = at_cexit; */
+/*     } */
+/*     getsint(sfd,&ap->lig_index); */
+/*     ch = nlgetc(sfd); */
+/*     ungetc(ch,sfd); */
+/*     if ( ch==' ' ) { */
+/* #ifdef FONTFORGE_CONFIG_DEVICETABLES */
+/* 	SFDReadDeviceTable(sfd,&ap->xadjust); */
+/* 	SFDReadDeviceTable(sfd,&ap->yadjust); */
+/* #else */
+/* 	SFDSkipDeviceTable(sfd); */
+/* 	SFDSkipDeviceTable(sfd); */
+/* #endif */
+/* 	ch = nlgetc(sfd); */
+/* 	ungetc(ch,sfd); */
+/* 	if ( isdigit(ch)) { */
+/* 	    getsint(sfd,(int16 *) &ap->ttf_pt_index); */
+/* 	    ap->has_ttf_pt = true; */
+/* 	} */
+/*     } */
+/*     if ( ap->anchor==NULL || ap->type==-1 ) { */
+/* 	LogError( "Bad Anchor Point: %s", sc->name ); */
+/* 	AnchorPointsFree(ap); */
+/* return( lastap ); */
+/*     } */
+/*     if ( lastap==NULL ) */
+/* 	sc->anchor = ap; */
+/*     else */
+/* 	lastap->next = ap; */
+/* return( ap ); */
+/* } */
 
 static RefChar *SFDGetRef(FILE *sfd, int was_enc) {
     RefChar *rf;
@@ -4348,7 +4733,7 @@ return( NULL );
 	    SplineCharFree(sc);
 return( NULL );
 	}
-            printf("tok:%s\n", tok );
+//            printf("tok:%s\n", tok );
 	if ( strmatch(tok,"Encoding:")==0 ) {
 	    int enc;
 	    getint(sfd,&enc);
@@ -4537,7 +4922,7 @@ return( NULL );
 		SFDGetHintMask(sfd,&sc->countermasks[i]);
 	    }
 	} else if ( strmatch(tok,"AnchorPoint:")==0 ) {
-	    lastap = SFDReadAnchorPoints(sfd,sc,lastap);
+	    lastap = SFDReadAnchorPoints(sfd,sc,&sc->anchor,lastap);
 	} else if ( strmatch(tok,"Fore")==0 ) {
 	    while ( isspace(ch = nlgetc(sfd)));
 	    ungetc(ch,sfd);
