@@ -987,9 +987,9 @@ static void SFDDumpUndo(FILE *sfd,SplineChar *sc,Undoes *u, char* keyPrefix, int
 #ifdef FONTFORGE_CONFIG_TYPE3
 //            SFDDumpBrush( sfd, &u->u.state.fill_brush );
 //            SFDDumpPen(   sfd, &u->u.state.stroke_pen );
-            fprintf(sfd, "DoFill: %d\n", u->u.state.dofill );
-            fprintf(sfd, "DoStroke: %d\n", u->u.state.dostroke );
-            fprintf(sfd, "FillFirst: %d\n", u->u.state.fillfirst );
+//            fprintf(sfd, "DoFill: %d\n", u->u.state.dofill );
+//            fprintf(sfd, "DoStroke: %d\n", u->u.state.dostroke );
+//            fprintf(sfd, "FillFirst: %d\n", u->u.state.fillfirst );
 #endif
             break;
 
@@ -1028,6 +1028,7 @@ static void SFDDumpUndo(FILE *sfd,SplineChar *sc,Undoes *u, char* keyPrefix, int
         }
         
         case ut_width:
+        case ut_vwidth:
         {
             fprintf(sfd, "Width: %d\n", u->u.width );
             break;
@@ -3958,12 +3959,12 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
                     u->u.state.splines = SFDGetSplineSet(sf,sfd,sc->layers[current_layer].order2);
                 }
 
-#ifdef FONTFORGE_CONFIG_TYPE3
+/* #ifdef FONTFORGE_CONFIG_TYPE3 */
 
-                if ( !strmatch(tok,"DoFill:"))       { getint(sfd,&i); u->u.state.dofill = i; }
-                if ( !strmatch(tok,"DoStroke:"))     { getint(sfd,&i); u->u.state.dostroke = i; }
-                if ( !strmatch(tok,"FillFirst:"))    { getint(sfd,&i); u->u.state.fillfirst = i; }
-#endif
+/*                 if ( !strmatch(tok,"DoFill:"))       { getint(sfd,&i); u->u.state.dofill = i; } */
+/*                 if ( !strmatch(tok,"DoStroke:"))     { getint(sfd,&i); u->u.state.dostroke = i; } */
+/*                 if ( !strmatch(tok,"FillFirst:"))    { getint(sfd,&i); u->u.state.fillfirst = i; } */
+/* #endif */
             
                 break;
 
@@ -4001,6 +4002,7 @@ static Undoes *SFDGetUndo( SplineFont *sf, FILE *sfd, SplineChar *sc,
             }
             
             case ut_width:
+            case ut_vwidth:
             {
                 if( !strmatch(tok,"Width:"))
                     { getint(sfd,&i); u->u.width = i; }
