@@ -3881,6 +3881,15 @@ return;
 #endif
       break;
     }
+
+    /* if ( gevent.type==et_charup ) */
+    /* { */
+    /*     printf( "autorepeat:%d us.code:%ld bottom\n", */
+    /*                     gevent.u.chr.autorepeat, */
+    /*                     event->xkey.keycode ); */
+    /* } */
+    
+    
     if ( gevent.type != et_noevent && gw!=NULL && gw->eh!=NULL )
 	(gw->eh)((GWindow) gw, &gevent);
     if ( event->type==DestroyNotify && gw!=NULL )

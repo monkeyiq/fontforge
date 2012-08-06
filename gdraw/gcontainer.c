@@ -669,6 +669,11 @@ return( true );
 	GiveToAll((GContainerD *) td,event);
 return( true );
     } else if ( event->type == et_char || event->type == et_charup ) {
+        /* printf( "gc1 autorepeat:%d us.code:%ld type:%d\n", */
+        /*         event->u.chr.autorepeat, */
+        /*         event->u.chr.keysym, */
+        /*         event->type ); */
+        
 return( _GWidget_TopLevel_Key(gw,gw,event));
     } else if ( !gw->is_dying && event->type == et_resize ) {
 	GRect r;

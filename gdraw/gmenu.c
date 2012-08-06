@@ -1560,6 +1560,16 @@ return( true );
 	}
     }
 
+    /* if ( event->type==et_charup || event->type==et_char) */
+    /* { */
+    /*     printf( "menu autorepeat:%d us.code:%ld bottom\n", */
+    /*             event->u.chr.autorepeat, */
+    /*             event->u.chr.keysym ); */
+
+    /*     if( event->u.chr.autorepeat ) */
+    /*         return true; */
+    /* } */
+    
     /* then look for shortcuts everywhere */
     if ( event->u.chr.state&(menumask&~ksm_shift) ||
 	    event->u.chr.keysym>=GK_Special ||
