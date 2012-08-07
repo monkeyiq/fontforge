@@ -1544,10 +1544,12 @@ static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int to
                 undo = sc->layers[i].undoes;
 //                UndoesPushTestObjects( sc, &undo );
                 for( limit = UndoRedoLimitToSave;
-                     undo && limit>0;
-                     undo = undo->next, idx++, limit-- )
+                     undo && (limit==-1 || limit>0);
+                     undo = undo->next, idx++ )
                 {
                     SFDDumpUndo( sfd, sc, undo, "Undo", idx );
+                    if( limit > 0 )
+                        limit--;
                 }
                 fprintf(sfd, "EndUndoes\n" );
                 fprintf(sfd, "Redoes\n" );
@@ -1555,10 +1557,12 @@ static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int to
                 limit = UndoRedoLimitToSave;
                 undo = sc->layers[i].redoes;
                 for( limit = UndoRedoLimitToSave;
-                     undo && limit>0;
-                     undo = undo->next, idx++, limit-- )
+                     undo && (limit==-1 || limit>0);
+                     undo = undo->next, idx++ )
                 {
                     SFDDumpUndo( sfd, sc, undo, "Redo", idx );
+                    if( limit > 0 )
+                        limit--;
                 }
                 fprintf(sfd, "EndRedoes\n" );
                 fprintf(sfd, "EndUndoRedoHistory\n" );
@@ -5135,14 +5139,17 @@ return( NULL );
                         else       sc->layers[current_layer].undoes = undo;
                         last = undo;
 
-                        limit--;
-                        if( limit <= 0 )
+                        if( limit != -1 )
                         {
-                            // we have hit our load limit, so lets just chuck everything away
-                            // until we hit the EndUndoes/EndRedoes magic line and then start
-                            // actually processing again.
-                            char* terminators[] = { "EndUndoes", "EndRedoes", 0 };
-                            SFDConsumeUntil( sfd, terminators );
+                            limit--;
+                            if( limit <= 0 )
+                            {
+                                // we have hit our load limit, so lets just chuck everything away
+                                // until we hit the EndUndoes/EndRedoes magic line and then start
+                                // actually processing again.
+                                char* terminators[] = { "EndUndoes", "EndRedoes", 0 };
+                                SFDConsumeUntil( sfd, terminators );
+                            }
                         }
                     }
                 }
@@ -5161,14 +5168,17 @@ return( NULL );
                         else       sc->layers[current_layer].redoes = undo;
                         last = undo;
 
-                        limit--;
-                        if( limit <= 0 )
+                        if( limit != -1 )
                         {
-                            // we have hit our load limit, so lets just chuck everything away
-                            // until we hit the EndUndoes/EndRedoes magic line and then start
-                            // actually processing again.
-                            char* terminators[] = { "EndUndoes", "EndRedoes", 0 };
-                            SFDConsumeUntil( sfd, terminators );
+                            limit--;
+                            if( limit <= 0 )
+                            {
+                                // we have hit our load limit, so lets just chuck everything away
+                                // until we hit the EndUndoes/EndRedoes magic line and then start
+                                // actually processing again.
+                                char* terminators[] = { "EndUndoes", "EndRedoes", 0 };
+                                SFDConsumeUntil( sfd, terminators );
+                            }
                         }
                     }
                 }
