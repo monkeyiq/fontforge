@@ -48,6 +48,9 @@
 
 #define SFD_VERSION_CONTAINS_UNDO_STACK 1
 
+int UndoRedoLimitToSave = 12; 
+int UndoRedoLimitToLoad = 12; 
+
 extern struct compressors compressors[];
 
 static char *joins[] = { "miter", "round", "bevel", "inher", NULL };
@@ -128,6 +131,10 @@ static StemInfo *SFDReadHints(FILE *sfd);
 static DStemInfo *SFDReadDHints( SplineFont *sf,FILE *sfd,int old );
 extern void ExtractHints(SplineChar *sc,void *hints,int docopy);
 extern void *UHintCopy(SplineChar *sc,int docopy);
+#ifdef FONTFORGE_CONFIG_TYPE3
+static void SFDDumpPattern(FILE *sfd, char *keyword, struct pattern *pattern);
+static void SFDDumpGradient(FILE *sfd, char *keyword, struct gradient *gradient);
+#endif
 
 static void utf7_encode(FILE *sfd,long ch) {
 
@@ -833,10 +840,12 @@ return( rle );
 static void SFDDumpBrush( FILE *sfd, struct brush* brush )
 {
     fprintf(sfd, "Brush: #%06x %g\n", brush->col, brush->opacity );
+#ifdef FONTFORGE_CONFIG_TYPE3
     if( brush->gradient )
         SFDDumpGradient(sfd,"Gradient:", brush->gradient );
     if( brush->pattern )
         SFDDumpPattern(sfd,"Pattern:", brush->pattern );
+#endif
     fprintf(sfd, "EndBrush\n");
 }
 
@@ -1527,21 +1536,27 @@ static void SFDDumpChar(FILE *sfd,SplineChar *sc,EncMap *map,int *newgids,int to
                 fprintf(sfd, "Layer: %d\n", i );
                 int idx = 0;
                 Undoes *undo = 0;
+                int limit = 0;
 
-                
+                printf("saving() UndoRedoLimitToSave:%d\n", UndoRedoLimitToSave );
                 fprintf(sfd, "Undoes\n" );
                 idx = 0;
                 undo = sc->layers[i].undoes;
 //                UndoesPushTestObjects( sc, &undo );
-                for( ; undo; undo = undo->next, idx++ )
+                for( limit = UndoRedoLimitToSave;
+                     undo && limit>0;
+                     undo = undo->next, idx++, limit-- )
                 {
                     SFDDumpUndo( sfd, sc, undo, "Undo", idx );
                 }
                 fprintf(sfd, "EndUndoes\n" );
                 fprintf(sfd, "Redoes\n" );
                 idx = 0;
+                limit = UndoRedoLimitToSave;
                 undo = sc->layers[i].redoes;
-                for( ; undo; undo = undo->next, idx++ )
+                for( limit = UndoRedoLimitToSave;
+                     undo && limit>0;
+                     undo = undo->next, idx++, limit-- )
                 {
                     SFDDumpUndo( sfd, sc, undo, "Redo", idx );
                 }
@@ -4699,6 +4714,46 @@ return( pat );
 }
 #endif
 
+
+static void SFDConsumeUntil( FILE *sfd, char** terminators )
+{
+    char tok[2000];
+    int i;
+    int ch;
+
+    char* line = 0;
+
+    while( line = getquotedeol( sfd ))
+    {
+        printf("SFDConsumeUntil() line:%s\n", line );
+        char** tp = terminators;
+        for( ; tp && *tp; ++tp )
+        {
+            if( !strnmatch( line, *tp, strlen( *tp )))
+            {
+                printf("SFDConsumeUntil() match at tp:%s\n", *tp );
+                return;
+            }
+        }
+    }
+    
+    
+    
+    /* while ( 1 ) */
+    /* { */
+    /*     if ( getname(sfd,tok)!=1 ) */
+    /*         return; */
+    /*     printf("SFDConsumeUntil() tok:%s\n", tok ); */
+        
+    /*     char** tp = terminators; */
+    /*     for( ; tp && *tp; ++tp ) */
+    /*     { */
+    /*         if ( !strmatch(tok,*tp)) */
+    /*             return; */
+    /*     } */
+    /* } */
+}
+
 static int orig_pos;
 
 static SplineChar *SFDGetChar(FILE *sfd,SplineFont *sf, int had_sf_layer_cnt) {
@@ -5058,7 +5113,8 @@ return( NULL );
                     int layer;
                     getint(sfd,&layer);
                 }
-                
+
+                int limit;
                 Undoes *undo = 0;
                 struct undoes *last = 0;
                 
@@ -5066,6 +5122,7 @@ return( NULL );
                 if ( !strmatch(tok,"Undoes") )
                 {
                     undo = 0;
+                    limit = UndoRedoLimitToLoad;
                     last = sc->layers[current_layer].undoes;
                     while( undo = SFDGetUndo( sf, sfd, sc, "UndoOperation", "EndUndoOperation", current_layer ) ) 
                     {
@@ -5074,6 +5131,16 @@ return( NULL );
                         if( last ) last->next = undo;
                         else       sc->layers[current_layer].undoes = undo;
                         last = undo;
+
+                        limit--;
+                        if( limit <= 0 )
+                        {
+                            // we have hit our load limit, so lets just chuck everything away
+                            // until we hit the EndUndoes/EndRedoes magic line and then start
+                            // actually processing again.
+                            char* terminators[] = { "EndUndoes", "EndRedoes", 0 };
+                            SFDConsumeUntil( sfd, terminators );
+                        }
                     }
                 }
                 
@@ -5081,6 +5148,7 @@ return( NULL );
                 if ( !strmatch(tok,"Redoes") )
                 {
                     undo = 0;
+                    limit = UndoRedoLimitToLoad;
                     last = sc->layers[current_layer].redoes;
                     while( undo = SFDGetUndo( sf, sfd, sc, "RedoOperation", "EndRedoOperation", current_layer ) ) 
                     {
@@ -5089,8 +5157,26 @@ return( NULL );
                         if( last ) last->next = undo;
                         else       sc->layers[current_layer].redoes = undo;
                         last = undo;
+
+                        limit--;
+                        if( limit <= 0 )
+                        {
+                            // we have hit our load limit, so lets just chuck everything away
+                            // until we hit the EndUndoes/EndRedoes magic line and then start
+                            // actually processing again.
+                            char* terminators[] = { "EndUndoes", "EndRedoes", 0 };
+                            SFDConsumeUntil( sfd, terminators );
+                        }
                     }
                 }
+
+                if( sc->layers[current_layer].undoes )
+                    printf("SFDGetChar() loaded %d undoes for this char\n",
+                           undoesLength( sc->layers[current_layer].undoes ));
+                if( sc->layers[current_layer].redoes )
+                    printf("SFDGetChar() loaded %d redoes for this char\n",
+                           undoesLength( sc->layers[current_layer].redoes ));
+                
             } else if ( strmatch(tok,"SplineSet")==0 ) {
 	    sc->layers[current_layer].splines = SFDGetSplineSet(sf,sfd,sc->layers[current_layer].order2);
 	} else if ( strmatch(tok,"Ref:")==0 || strmatch(tok,"Refer:")==0 ) {

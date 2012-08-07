@@ -3238,4 +3238,8 @@ extern bigreal SFDescender(SplineFont *sf, int layer, int return_error);
 
 extern SplineChar ***GlyphClassesFromNames(SplineFont *sf,char **classnames,
 	int class_cnt );
+
+extern int listLength( void* head, int nextoffset );
+extern int undoesLength( struct undoes *undoes );
+
 #endif

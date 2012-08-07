@@ -1993,3 +1993,25 @@ void SFLayerSetBackground(SplineFont *sf,int layer,int is_back) {
 	++k;
     } while ( k<sf->subfontcnt );
 }
+
+int listLength( void* p, int nextoffset )
+{
+    if( !p )
+        return 0;
+    int ret = 1;
+    p = *((void**)(p + nextoffset));
+    for( ; p; ret++ )
+    {
+        p = *((void**)(p + nextoffset));
+    }
+    return ret;
+}
+
+#include <stddef.h>
+
+int undoesLength( struct undoes *undoes )
+{
+    int offset = offsetof( Undoes, next );
+    return listLength( undoes, offset );
+}
+
