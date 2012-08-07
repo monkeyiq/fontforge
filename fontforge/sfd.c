@@ -2790,7 +2790,10 @@ static int SFDDump(FILE *sfd,SplineFont *sf,EncMap *map,EncMap *normal,
     ff_progress_start_indicator(10,_("Saving..."),_("Saving Spline Font Database"),_("Saving Outlines"),
 	    realcnt,i+1);
     ff_progress_enable_stop(false);
-    fprintf(sfd, "SplineFontDB: %.1f\n", 3.1 );
+    double version = 3.1;
+    if( !UndoRedoLimitToSave )
+        version = 3.0;
+    fprintf(sfd, "SplineFontDB: %.1f\n", version );
     if ( sf->mm != NULL )
 	err = SFD_MMDump(sfd,sf->mm->normal,map,normal,todir,dirname);
     else
