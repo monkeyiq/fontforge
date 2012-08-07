@@ -805,7 +805,6 @@ typedef struct bdfchar {
 } BDFChar;
 
 typedef struct undoes {
-    int dummy;
     struct undoes *next;
     enum undotype { ut_none=0, ut_state, ut_tstate, ut_statehint, ut_statename,
 	    ut_statelookup,
