@@ -1999,8 +1999,7 @@ int listLength( void* p, int nextoffset )
     if( !p )
         return 0;
     int ret = 1;
-    // list head is a direct pointer to the first struct
-    p = *((void**)p); 
+    p = *((void**)(p + nextoffset));
     for( ; p; ret++ )
     {
         p = *((void**)(p + nextoffset));
