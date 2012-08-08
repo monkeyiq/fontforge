@@ -29,6 +29,8 @@
 #include <math.h>
 #include <ustring.h>
 #include <utype.h>
+#include <execinfo.h>
+#include <stdio.h>
 
 extern char *coord_sep;
 
@@ -37,41 +39,16 @@ int copymetadata = 0;
 int copyttfinstr = 0;
 int export_clipboard = 1;
 
-///////////
-
-#include <execinfo.h>
-#include <stdio.h>
-
-void BackTraceFD( int fd )
-{
+void BackTraceFD( int fd ) {
     const int arraysz = 500;
     void* array[arraysz];
     size_t size;
     
     size = backtrace( array, arraysz ); 
     backtrace_symbols_fd( array, size, fd );
-
-    // (my-fontforge-style-hook)
-    
-    
-    /* char** symbarray = backtrace_symbols( array, size ); */
-    /* if( symbarray ) */
-    /* { */
-    /*     int i=0; */
-    /*     for( i=0; i < size; ++i ) */
-    /*     { */
-    /*         const char* s = symbarray[i]; */
-    /*         printf("sym:%s\n", s ); */
-    /*     } */
-        
-    /* } */
-    
-        
-    
 }
 
-void BackTrace( const char* msg )
-{
+void BackTrace( const char* msg ) {
     fprintf( stderr, msg );
     BackTraceFD( 2 );
 }
@@ -500,31 +477,26 @@ void ExtractHints(SplineChar *sc,void *hints,int docopy) {
 
 void UndoesFreeButRetainFirstN( Undoes** undopp, int retainAmount )
 {
-    printf("UndoesFreeButRetainFirstN(1) %d\n", retainAmount );
-    
     if( !undopp || !*undopp )
         return;
     Undoes* undo = *undopp;
     // wipe them all will change the list header pointer too
-    if( !retainAmount )
-    {
+    if( !retainAmount ) {
         UndoesFree( undo );
         *undopp = 0;
         return;
     }
-    printf("UndoesFreeButRetainFirstN(2) %d\n", retainAmount );
-
+    
     Undoes* undoprev = undo;
     for( ; retainAmount > 0 && undo ; retainAmount-- )
     {
         undoprev = undo;
         undo = undo->next;
     }
-    printf("UndoesFreeButRetainFirstN(3) %d\n", retainAmount );
     // not enough items to need to do a trim.
     if( retainAmount > 0 )
         return;
-
+    
     // break off and free the tail
     UndoesFree( undo );
     undoprev->next = 0;
@@ -613,11 +585,9 @@ static Undoes *AddUndo(Undoes *undo,Undoes **uhead,Undoes **rhead) {
 return( undo );
 }
 
-static Undoes *CVAddUndo(CharViewBase *cv,Undoes *undo)
-{
-    BackTrace("CVAddUndo()");
-    return( AddUndo(undo,&cv->layerheads[cv->drawmode]->undoes,
-                    &cv->layerheads[cv->drawmode]->redoes));
+static Undoes *CVAddUndo(CharViewBase *cv,Undoes *undo) {
+return( AddUndo(undo,&cv->layerheads[cv->drawmode]->undoes,
+	&cv->layerheads[cv->drawmode]->redoes));
 }
 
 int CVLayer(CharViewBase *cv) {

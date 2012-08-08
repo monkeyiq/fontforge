@@ -2942,7 +2942,6 @@ static void MVMenuSizeWindow(GWindow mgw,struct gmenuitem *mi,GEvent *e) {
     MVSetVSb(mv);
 }
 
-
 static void MVMenuChangePointSize(GWindow mgw,struct gmenuitem *mi,GEvent *e) {
     MetricsView *mv = (MetricsView *) GDrawGetUserData(mgw);
 
