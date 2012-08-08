@@ -4813,7 +4813,6 @@ return( NULL );
 		last = sc->layers[current_layer].undoes;
 		while( undo = SFDGetUndo( sf, sfd, sc, "UndoOperation", "EndUndoOperation", current_layer ) ) 
 		{
-		    printf("have undo... type:%d\n", undo->undotype );
 		    // push to back
 		    if( last ) last->next = undo;
 		    else       sc->layers[current_layer].undoes = undo;
@@ -4839,7 +4838,6 @@ return( NULL );
 		last = sc->layers[current_layer].redoes;
 		while( undo = SFDGetUndo( sf, sfd, sc, "RedoOperation", "EndRedoOperation", current_layer ) ) 
 		{
-		    printf("have a redo operation!\n");
 		    // push to back
 		    if( last ) last->next = undo;
 		    else       sc->layers[current_layer].redoes = undo;
