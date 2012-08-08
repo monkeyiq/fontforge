@@ -1,4 +1,3 @@
-// -*- tab-width: 10 -*-
 /* Copyright (C) 2000-2012 by George Williams */
 /*
  * Redistribution and use in source and binary forms, with or without
@@ -49,8 +48,11 @@ void BackTraceFD( int fd )
     void* array[arraysz];
     size_t size;
     
-    size = backtrace( array, arraysz );
+    size = backtrace( array, arraysz ); 
     backtrace_symbols_fd( array, size, fd );
+
+    // (my-fontforge-style-hook)
+    
     
     /* char** symbarray = backtrace_symbols( array, size ); */
     /* if( symbarray ) */

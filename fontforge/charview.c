@@ -3084,6 +3084,7 @@ static void CVCharUp(CharView *cv, GEvent *event ) {
     }
     
     
+    
 #if _ModKeysAutoRepeat
     /* Under cygwin these keys auto repeat, they don't under normal X */
     if ( event->u.chr.keysym == GK_Shift_L || event->u.chr.keysym == GK_Shift_R ||
