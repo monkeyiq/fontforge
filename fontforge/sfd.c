@@ -721,7 +721,11 @@ return;
 #endif
 
 static void SFDDumpAnchorPoints(FILE *sfd,AnchorPoint *ap) {
-    for ( ; ap; ap=ap->next )
+    if (ap==NULL) {
+	return;
+    }
+    
+    for ( ; ap!=NULL; ap=ap->next )
     {
 	fprintf( sfd, "AnchorPoint: " );
 	SFDDumpUTF7Str(sfd,ap->anchor->name);

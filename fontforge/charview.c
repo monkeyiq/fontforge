@@ -3075,14 +3075,6 @@ static void CVCharUp(CharView *cv, GEvent *event ) {
 	    return;
 	}
     }
-    if ( !event->u.chr.autorepeat && event->u.chr.keysym=='`' )
-    {
-        PressingTilde = 0;
-    }
-    if ( event->u.chr.autorepeat && HaveModifiers && event->u.chr.keysym=='`' )
-    {
-        return;
-    }
     
     
     

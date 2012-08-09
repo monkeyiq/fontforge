@@ -37,6 +37,8 @@
 #include "unicoderange.h"
 #include "psfont.h"
 #include <locale.h>
+#include <stddef.h>
+
 
 void SFUntickAll(SplineFont *sf) {
     int i;
@@ -1993,8 +1995,6 @@ void SFLayerSetBackground(SplineFont *sf,int layer,int is_back) {
 	++k;
     } while ( k<sf->subfontcnt );
 }
-
-#include <stddef.h>
 
 int listLength( void* p, int nextoffset ) {
     if( !p )
